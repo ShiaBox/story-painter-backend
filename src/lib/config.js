@@ -8,14 +8,14 @@
 
 function normalize(url) {
   if (typeof url !== 'string' || !url) {
-    throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit src/lib/appConfig.js to export a non-empty FRONTEND_URL.');
+    throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit config/appConfig.js to export a non-empty FRONTEND_URL.');
   }
   // Ensure it has protocol and ends with a single trailing slash
   const withProtocol = /^https?:\/\//i.test(url) ? url : `https://${url}`;
   return withProtocol.replace(/\/+$/, '/') ;
 }
 
-import { FRONTEND_URL as CFG_URL } from './appConfig.js';
+import { FRONTEND_URL as CFG_URL } from '../../config/appConfig.js';
 
 export async function resolveFrontendUrl() {
   // 1) Runtime variables (EdgeOne Pages may inject globals; Node via process.env)
@@ -32,5 +32,5 @@ export async function resolveFrontendUrl() {
   }
 
   // Neither runtime variable nor local config provided a valid value
-  throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit src/lib/appConfig.js to export FRONTEND_URL.');
+  throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit config/appConfig.js to export FRONTEND_URL.');
 }
