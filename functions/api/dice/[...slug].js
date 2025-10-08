@@ -108,18 +108,13 @@ export async function onRequest({ request }) {
   if (pathname.endsWith('/api/dice/load_data') && request.method === 'GET') {
     try {
       const key = searchParams.get("key");
-      let password = searchParams.get("password");
+      const password = searchParams.get("password");
 
       if (!key || !password) {
         return new Response(JSON.stringify({ error: "Missing key or password" }), {
           status: 400,
           headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
         });
-      }
-
-      // Sanitize password: The frontend might mistakenly include the '#' from the URL hash.
-      if (password.startsWith('#')) {
-        password = password.substring(1);
       }
 
       const storageKey = `${key}#${password}`;
