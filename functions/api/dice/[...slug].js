@@ -29,11 +29,12 @@ function normalize(url) {
   return withProtocol.replace(/\/+$/, '/');
 }
 import { FRONTEND_URL as CFG_URL } from '../../../config/appConfig.js';
-async function resolveFrontendUrl() {
+async function resolveFrontendUrl(env) {
   const runtimeVar =
     (typeof globalThis !== 'undefined' && globalThis.FRONTEND_URL) ||
     (typeof process !== 'undefined' && process.env && process.env.FRONTEND_URL);
   if (runtimeVar) return normalize(runtimeVar);
+  if (env && env.FRONTEND_URL) return normalize(env.FRONTEND_URL);
   if (typeof CFG_URL !== 'undefined' && CFG_URL) return normalize(CFG_URL);
   throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit config/appConfig.js to export FRONTEND_URL.');
 }
@@ -50,12 +51,12 @@ const getCorsHeaders = (frontendUrl, methods = 'GET, PUT, OPTIONS') => ({
  * @param {object} context - The function context.
  * @param {Request} context.request - The incoming request.
  */
-export async function onRequest({ request }) {
+export async function onRequest({ request, env }) {
   const { pathname, searchParams } = new URL(request.url);
 
   let FRONTEND_URL;
   try {
-    FRONTEND_URL = await resolveFrontendUrl();
+    FRONTEND_URL = await resolveFrontendUrl(env);
   } catch (e) {
     const msg = (e && e.message) ? e.message : 'FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or edit config/appConfig.js.';
     return new Response(msg, { status: 500 });
