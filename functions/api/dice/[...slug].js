@@ -1,48 +1,145 @@
+// Utility functions
+function generateRandomString(length) {
+  let result = "";
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const charactersLength = characters.length;
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  }
+  return result;
+}
+
+function generateStorageData(data, name) {
+  const now = new Date().toISOString();
+  return {
+    client: "SealDice",
+    created_at: now,
+    data: data,
+    name: name,
+    note: "",
+    updated_at: now,
+  };
+}
+
+const FRONTEND_URL = 'https://log-shia.zerda.top/';
+const FILE_SIZE_LIMIT_MB = 2;
+
+const getCorsHeaders = (methods = 'GET, PUT, OPTIONS') => ({
+  'Access-Control-Allow-Origin': FRONTEND_URL.slice(0, -1),
+  'Access-Control-Allow-Methods': methods,
+  'Access-Control-Allow-Headers': 'Content-Type, Accept-Version',
+});
+
 /**
- * EdgeOne Pages Function for debugging KV binding.
- * This function inspects the runtime environment to find where the KV binding is located.
- *
+ * EdgeOne Pages Function handler
  * @param {object} context - The function context.
  * @param {Request} context.request - The incoming request.
- * @param {object} context.env - Environment variables and bindings.
  */
-export async function onRequest({ request, env }) {
-  // --- Start Debugging ---
+export async function onRequest({ request }) {
+  const { pathname, searchParams } = new URL(request.url);
 
-  // Attempt to get keys from the 'env' object passed to the function.
-  const envKeys = env ? Object.keys(env) : ['env object is undefined or null'];
+  // Handle CORS preflight requests
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: getCorsHeaders() });
+  }
 
-  // Attempt to get keys from the global scope.
-  const globalKeys = typeof globalThis !== 'undefined' ? Object.keys(globalThis) : ['globalThis is not available'];
+  // Check for KV binding in the global scope
+  if (typeof XBSKV === 'undefined') {
+    return new Response('CRITICAL ERROR: Global KV Binding "XBSKV" not found. Please verify EdgeOne Pages configuration.', { status: 500 });
+  }
 
-  // Filter for potential bindings in the global scope (usually all-caps).
-  const potentialGlobalBindings = globalKeys.filter(k => k === k.toUpperCase() && k.length > 1 && typeof globalThis[k] === 'object');
+  // --- Route 1: Upload Log ---
+  if (pathname.endsWith('/api/dice/log') && request.method === 'PUT') {
+    try {
+      const contentLength = request.headers.get('Content-Length');
+      if (contentLength && parseInt(contentLength, 10) > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
+        return new Response(
+          JSON.stringify({ success: false, message: `File size exceeds ${FILE_SIZE_LIMIT_MB}MB limit` }),
+          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+        );
+      }
 
-  // Construct a detailed debug report.
-  const debugInfo = {
-    message: "Inspecting EdgeOne runtime environment for KV binding.",
-    note: "Please copy this entire JSON object and paste it back to the assistant.",
-    timestamp: new Date().toISOString(),
-    runtime_context: {
-      env_object_keys: envKeys,
-      global_scope_keys: globalKeys,
-    },
-    analysis: {
-      is_XBSKV_in_env: env ? env.hasOwnProperty('XBSKV') : false,
-      is_XBSKV_in_global: typeof globalThis !== 'undefined' ? globalThis.hasOwnProperty('XBSKV') : false,
-      potential_global_bindings_found: potentialGlobalBindings,
+      const formData = await request.formData();
+      const name = formData.get("name");
+      const file = formData.get("file");
+      const uniform_id = formData.get("uniform_id");
+
+      if (!/^[^:]+:\d+$/.test(uniform_id)) {
+        return new Response(
+          JSON.stringify({ data: "uniform_id field did not pass validation" }),
+          { status: 400, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (file.size > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
+        return new Response(
+          JSON.stringify({ data: "Size is too big!" }),
+          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      uint8Array.forEach((byte) => { binaryString += String.fromCharCode(byte); });
+      const logdata = btoa(binaryString);
+
+      const password = Math.floor(Math.random() * (999999 - 100000 + 1) + 100000);
+      const key = generateRandomString(4);
+      const storageKey = `${key}#${password}`;
+
+      // Use the global XBSKV variable
+      await XBSKV.put(storageKey, JSON.stringify(generateStorageData(logdata, name)));
+
+      const responsePayload = { url: `${FRONTEND_URL}?key=${key}#${password}` };
+
+      return new Response(JSON.stringify(responsePayload), {
+        status: 200,
+        headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' },
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      return new Response(error.stack || 'Internal Server Error', { status: 500 });
     }
-  };
+  }
 
-  // Return the debug report as a JSON response.
-  return new Response(JSON.stringify(debugInfo, null, 2), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*', // Allow any origin for this debug request
-    },
-  });
+  // --- Route 2: Load Log Data ---
+  if (pathname.endsWith('/api/dice/load_data') && request.method === 'GET') {
+    try {
+      const key = searchParams.get("key");
+      const password = searchParams.get("password");
 
-  // --- End Debugging ---
-  // The original application logic is temporarily disabled.
+      if (!key || !password) {
+        return new Response(JSON.stringify({ error: "Missing key or password" }), {
+          status: 400,
+          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+        });
+      }
+
+      const storageKey = `${key}#${password}`;
+      
+      // Use the global XBSKV variable
+      const storedData = await XBSKV.get(storageKey);
+
+      if (storedData === null) {
+        return new Response(JSON.stringify({ error: "Data not found" }), {
+          status: 404,
+          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(storedData, {
+        status: 200,
+        headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+      });
+
+    } catch (error) {
+      console.error('Load data error:', error);
+      return new Response(error.stack || 'Internal Server Error', { status: 500 });
+    }
+  }
+
+  // --- Fallback: Not Found ---
+  return new Response('Not Found', { status: 404 });
 }
