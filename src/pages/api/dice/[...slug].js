@@ -30,8 +30,9 @@ export default async function handler(request) {
   }
 
   // 检查KV命名空间是否已绑定
-  if (!process.env.XBSKV) {
-    return new Response('KV_BINDING_ERROR: "XBSKV" is not bound.', { status: 500 });
+  // 在腾讯云EdgeOne环境中，KV绑定是作为全局变量注入的
+  if (typeof XBSKV === 'undefined') {
+    return new Response('KV_BINDING_ERROR: KV namespace "XBSKV" is not available. Please check your EdgeOne Pages configuration.', { status: 500 });
   }
 
   // --- 路由1: 上传日志 ---
@@ -74,7 +75,7 @@ export default async function handler(request) {
       const key = generateRandomString(4);
       const storageKey = `${key}#${password}`;
 
-      await process.env.XBSKV.put(storageKey, JSON.stringify(generateStorageData(logdata, name)));
+      await XBSKV.put(storageKey, JSON.stringify(generateStorageData(logdata, name)));
 
       const responsePayload = { url: `${FRONTEND_URL}?key=${key}#${password}` };
 
@@ -103,7 +104,7 @@ export default async function handler(request) {
       }
 
       const storageKey = `${key}#${password}`;
-      const storedData = await process.env.XBSKV.get(storageKey);
+      const storedData = await XBSKV.get(storageKey);
 
       if (storedData === null) {
         return new Response(JSON.stringify({ error: "Data not found" }), {
