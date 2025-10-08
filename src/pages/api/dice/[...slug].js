@@ -1,9 +1,9 @@
 import { generateRandomString, generateStorageData } from '../../../lib/utils';
+import { resolveFrontendUrl } from '../../../lib/config.js';
 
 // 指定此API路由在Edge运行时中执行
 export const runtime = 'edge';
 
-const FRONTEND_URL = 'https://log.loli.band/';
 const FILE_SIZE_LIMIT_MB = 2;
 
 /**
@@ -11,8 +11,8 @@ const FILE_SIZE_LIMIT_MB = 2;
  * @param {string} methods - 允许的HTTP方法
  * @returns {object}
  */
-const getCorsHeaders = (methods = 'GET, PUT, OPTIONS') => ({
-  'Access-Control-Allow-Origin': FRONTEND_URL.slice(0, -1),
+const getCorsHeaders = (frontendUrl, methods = 'GET, PUT, OPTIONS') => ({
+  'Access-Control-Allow-Origin': frontendUrl.slice(0, -1),
   'Access-Control-Allow-Methods': methods,
   'Access-Control-Allow-Headers': 'Content-Type, Accept-Version',
 });
@@ -25,8 +25,16 @@ export default async function handler(request) {
   const { pathname, searchParams } = new URL(request.url);
 
   // 统一处理CORS预检请求
+  let FRONTEND_URL;
+  try {
+    FRONTEND_URL = await resolveFrontendUrl();
+  } catch (e) {
+    const msg = (e && e.message) ? e.message : 'FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL or create src/lib/appConfig.js.';
+    return new Response(msg, { status: 500 });
+  }
+
   if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: getCorsHeaders() });
+    return new Response(null, { headers: getCorsHeaders(FRONTEND_URL) });
   }
 
   // 检查KV命名空间是否已绑定
@@ -42,7 +50,7 @@ export default async function handler(request) {
       if (contentLength && parseInt(contentLength, 10) > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
         return new Response(
           JSON.stringify({ success: false, message: `File size exceeds ${FILE_SIZE_LIMIT_MB}MB limit` }),
-          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 413, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
@@ -54,14 +62,14 @@ export default async function handler(request) {
       if (!/^[^:]+:\d+$/.test(uniform_id)) {
         return new Response(
           JSON.stringify({ data: "uniform_id field did not pass validation" }),
-          { status: 400, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
       if (file.size > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
         return new Response(
           JSON.stringify({ data: "Size is too big!" }),
-          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 413, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
@@ -81,7 +89,7 @@ export default async function handler(request) {
 
       return new Response(JSON.stringify(responsePayload), {
         status: 200,
-        headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' },
       });
 
     } catch (error) {
@@ -99,7 +107,7 @@ export default async function handler(request) {
       if (!key || !password) {
         return new Response(JSON.stringify({ error: "Missing key or password" }), {
           status: 400,
-          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
         });
       }
 
@@ -109,13 +117,13 @@ export default async function handler(request) {
       if (storedData === null) {
         return new Response(JSON.stringify({ error: "Data not found" }), {
           status: 404,
-          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
         });
       }
 
       return new Response(storedData, {
         status: 200,
-        headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
       });
 
     } catch (error) {

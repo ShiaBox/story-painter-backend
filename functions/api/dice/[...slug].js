@@ -21,11 +21,24 @@ function generateStorageData(data, name) {
   };
 }
 
-const FRONTEND_URL = 'https://log.loli.band/';
+function normalize(url) {
+  if (typeof url !== 'string' || !url) {
+    throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL.');
+  }
+  const withProtocol = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  return withProtocol.replace(/\/+$/, '/');
+}
+async function resolveFrontendUrl() {
+  const runtimeVar =
+    (typeof globalThis !== 'undefined' && globalThis.FRONTEND_URL) ||
+    (typeof process !== 'undefined' && process.env && process.env.FRONTEND_URL);
+  if (runtimeVar) return normalize(runtimeVar);
+  throw new Error('FRONTEND_URL is not configured. Please set runtime variable FRONTEND_URL.');
+}
 const FILE_SIZE_LIMIT_MB = 2;
 
-const getCorsHeaders = (methods = 'GET, PUT, OPTIONS') => ({
-  'Access-Control-Allow-Origin': FRONTEND_URL.slice(0, -1),
+const getCorsHeaders = (frontendUrl, methods = 'GET, PUT, OPTIONS') => ({
+  'Access-Control-Allow-Origin': frontendUrl.slice(0, -1),
   'Access-Control-Allow-Methods': methods,
   'Access-Control-Allow-Headers': 'Content-Type, Accept-Version',
 });
@@ -38,9 +51,16 @@ const getCorsHeaders = (methods = 'GET, PUT, OPTIONS') => ({
 export async function onRequest({ request }) {
   const { pathname, searchParams } = new URL(request.url);
 
+  let FRONTEND_URL;
+  try {
+    FRONTEND_URL = await resolveFrontendUrl();
+  } catch (e) {
+    const msg = (e && e.message) ? e.message : 'FRONTEND_URL is not configured.';
+    return new Response(msg, { status: 500 });
+  }
   // Handle CORS preflight requests
   if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: getCorsHeaders() });
+    return new Response(null, { headers: getCorsHeaders(FRONTEND_URL) });
   }
 
   // Check for KV binding in the global scope
@@ -55,7 +75,7 @@ export async function onRequest({ request }) {
       if (contentLength && parseInt(contentLength, 10) > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
         return new Response(
           JSON.stringify({ success: false, message: `File size exceeds ${FILE_SIZE_LIMIT_MB}MB limit` }),
-          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 413, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
@@ -67,14 +87,14 @@ export async function onRequest({ request }) {
       if (!/^[^:]+:\d+$/.test(uniform_id)) {
         return new Response(
           JSON.stringify({ data: "uniform_id field did not pass validation" }),
-          { status: 400, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
       if (file.size > FILE_SIZE_LIMIT_MB * 1024 * 1024) {
         return new Response(
           JSON.stringify({ data: "Size is too big!" }),
-          { status: 413, headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' } }
+          { status: 413, headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' } }
         );
       }
 
@@ -95,7 +115,7 @@ export async function onRequest({ request }) {
 
       return new Response(JSON.stringify(responsePayload), {
         status: 200,
-        headers: { ...getCorsHeaders('PUT, OPTIONS'), 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(FRONTEND_URL, 'PUT, OPTIONS'), 'Content-Type': 'application/json' },
       });
 
     } catch (error) {
@@ -113,7 +133,7 @@ export async function onRequest({ request }) {
       if (!key || !password) {
         return new Response(JSON.stringify({ error: "Missing key or password" }), {
           status: 400,
-          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
         });
       }
 
@@ -125,13 +145,13 @@ export async function onRequest({ request }) {
       if (storedData === null) {
         return new Response(JSON.stringify({ error: "Data not found" }), {
           status: 404,
-          headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+          headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
         });
       }
 
       return new Response(storedData, {
         status: 200,
-        headers: { ...getCorsHeaders('GET, OPTIONS'), 'Content-Type': 'application/json' },
+        headers: { ...getCorsHeaders(FRONTEND_URL, 'GET, OPTIONS'), 'Content-Type': 'application/json' },
       });
 
     } catch (error) {
