@@ -3,7 +3,7 @@ import { generateRandomString, generateStorageData } from '../../../lib/utils';
 // 指定此API路由在Edge运行时中执行
 export const runtime = 'edge';
 
-const FRONTEND_URL = 'https://log-shia.zerda.top/';
+const FRONTEND_URL = 'https://log.loli.band/';
 const FILE_SIZE_LIMIT_MB = 2;
 
 /**
