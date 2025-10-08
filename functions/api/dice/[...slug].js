@@ -21,7 +21,7 @@ function generateStorageData(data, name) {
   };
 }
 
-const FRONTEND_URL = 'https://log-shia.zerda.top/';
+const FRONTEND_URL = 'https://log.loli.band/';
 const FILE_SIZE_LIMIT_MB = 2;
 
 const getCorsHeaders = (methods = 'GET, PUT, OPTIONS') => ({
